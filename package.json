@@ -1,0 +1,15 @@
+{
+  "name": "netmarble-shop-claimer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "claim:daily": "node scripts/claim.js --item \"毎日の魔法石ガチャ\"",
+    "claim:weekly": "node scripts/claim.js --item \"ラグジュアリーガチャ\"",
+    "claim:both": "node scripts/claim.js --item \"毎日の魔法石ガチャ\" --item \"ラグジュアリーガチャ\"",
+    "login": "node scripts/save-login.js"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0"
+  }
+}
