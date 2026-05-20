@@ -48,10 +48,12 @@ npm run login の最後に表示された base64 文字列
 
 ## 実行時刻
 
-GitHub Actions の cron は UTC です。この設定では日本時間で実行されます。
+GitHub Actions の cron は UTC です。この設定では次の日本時間で実行されます。
 
-- 毎日 00:05 JST: `毎日の魔法石ガチャ`
-- 毎週 月曜 00:10 JST: `ラグジュアリーガチャ`
+- 毎日 09:05 JST: `毎日の魔法石ガチャ`
+- 毎週 木曜 09:10 JST: `ラグジュアリーガチャ`
+
+workflow 内のコメントにも、JST と UTC の対応を記載しています。
 
 時刻を変える場合は `.github/workflows/claim-netmarble-shop.yml` の cron を編集してください。
 

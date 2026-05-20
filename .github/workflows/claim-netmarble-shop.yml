@@ -13,10 +13,12 @@ on:
           - weekly
           - both
   schedule:
-    # GitHub Actions cron is UTC. 15:05 UTC = 00:05 JST.
-    - cron: '5 15 * * *'
-    # Sunday 15:10 UTC = Monday 00:10 JST.
-    - cron: '10 15 * * 0'
+    # Daily claim: 00:05 UTC = 09:05 JST.
+    # Runs "毎日の魔法石ガチャ" every day.
+    - cron: '5 0 * * *'
+    # Weekly claim: Thursday 00:10 UTC = Thursday 09:10 JST.
+    # Runs "ラグジュアリーガチャ" once a week.
+    - cron: '10 0 * * 4'
 
 jobs:
   claim:
@@ -50,5 +52,5 @@ jobs:
         run: npm run claim:daily
 
       - name: Claim weekly reward
-        if: github.event_name == 'workflow_dispatch' && (inputs.target == 'weekly' || inputs.target == 'both') || github.event_name == 'schedule' && github.event.schedule == '10 15 * * 0'
+        if: github.event_name == 'workflow_dispatch' && (inputs.target == 'weekly' || inputs.target == 'both') || github.event_name == 'schedule' && github.event.schedule == '10 0 * * 4'
         run: npm run claim:weekly
