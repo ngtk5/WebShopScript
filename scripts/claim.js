@@ -7,6 +7,7 @@ const STORAGE_STATE_PATH = process.env.STORAGE_STATE_PATH ?? 'storage/state.json
 const HEADLESS = process.env.HEADLESS !== 'false';
 const DRY_RUN = process.env.DRY_RUN === 'true';
 
+// Reward names can be passed by npm scripts, CLI args, or ITEM_NAMES for manual runs.
 const items = parseItems(process.argv.slice(2));
 
 if (items.length === 0) {
@@ -14,6 +15,7 @@ if (items.length === 0) {
   process.exit(2);
 }
 
+// Reuse the login session saved locally by scripts/save-login.js or restored in GitHub Actions.
 if (!fs.existsSync(STORAGE_STATE_PATH)) {
   console.error(`Missing login state: ${STORAGE_STATE_PATH}`);
   console.error('Run `npm run login` locally, then add the base64 state to GitHub Secrets.');
@@ -22,6 +24,7 @@ if (!fs.existsSync(STORAGE_STATE_PATH)) {
 
 const browser = await chromium.launch({ headless: HEADLESS });
 const context = await browser.newContext({
+  // Match the shop locale and reset timing to Japan time.
   locale: 'ja-JP',
   timezoneId: 'Asia/Tokyo',
   storageState: STORAGE_STATE_PATH,
@@ -43,6 +46,7 @@ try {
 }
 
 function parseItems(args) {
+  // Support multiple --item flags so one run can claim daily and weekly rewards.
   const parsed = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -63,6 +67,7 @@ async function claimItem(page, itemName) {
   await page.goto(SHOP_URL, { waitUntil: 'networkidle' });
   await dismissCommonPopups(page);
 
+  // Locate the visible item name first, then climb to the nearest clickable product area.
   const itemText = page.getByText(itemName, { exact: false }).first();
   await itemText.waitFor({ state: 'visible' });
   await itemText.scrollIntoViewIfNeeded();
@@ -72,6 +77,7 @@ async function claimItem(page, itemName) {
   );
 
   const cardText = normalize(await card.innerText().catch(() => ''));
+  // Stop before clicking if the card does not clearly look like a free claim.
   assertFreeClaimSurface(itemName, cardText);
 
   const action = await findActionIn(card);
@@ -96,6 +102,7 @@ async function claimItem(page, itemName) {
 }
 
 function assertFreeClaimSurface(itemName, text) {
+  // These signals are intentionally conservative to avoid clicking a paid product by mistake.
   const freeSignals = [
     '無料',
     '0円',
@@ -119,6 +126,7 @@ function assertFreeClaimSurface(itemName, text) {
 }
 
 async function findActionIn(root) {
+  // Prefer accessible button/link names instead of brittle CSS classes from the shop UI.
   const actionLabels = [
     /受け取り/,
     /獲得/,
@@ -142,6 +150,7 @@ async function findActionIn(root) {
 }
 
 async function confirmFreeFlow(page) {
+  // Some flows show one or more confirmation dialogs; advance only through free-looking prompts.
   const steps = [
     /無料/,
     /受け取り/,
@@ -186,6 +195,7 @@ async function firstVisibleButton(page, labels) {
 }
 
 async function dismissCommonPopups(page) {
+  // Close common consent/notice dialogs that can block the item card or confirmation button.
   const labels = [/同意/, /許可/, /確認/, /^OK$/i, /閉じる/, /close/i, /accept/i];
 
   for (const label of labels) {
@@ -198,6 +208,7 @@ async function dismissCommonPopups(page) {
 }
 
 async function ensureLoggedIn(page) {
+  // If the saved session expired, fail early so the GitHub Actions log explains the fix.
   const bodyText = normalize(await page.locator('body').innerText().catch(() => ''));
   if (/(ログイン|login|sign in)/i.test(bodyText) && !/(ログアウト|logout|sign out)/i.test(bodyText)) {
     throw new Error('Login state appears to be expired. Run `npm run login` and update the secret.');
