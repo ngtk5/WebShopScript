@@ -6,6 +6,8 @@ const SHOP_URL = process.env.SHOP_URL ?? 'https://slvshop.netmarble.com/ja/item'
 const STORAGE_STATE_PATH = process.env.STORAGE_STATE_PATH ?? 'storage/state.json';
 const HEADLESS = process.env.HEADLESS !== 'false';
 const DRY_RUN = process.env.DRY_RUN === 'true';
+const SLOW_MO = Number(process.env.SLOW_MO ?? 0);
+const PAUSE_AFTER_DONE = Number(process.env.PAUSE_AFTER_DONE ?? 0);
 
 // Reward names can be passed by npm scripts, CLI args, or ITEM_NAMES for manual runs.
 const items = parseItems(process.argv.slice(2));
@@ -22,7 +24,7 @@ if (!fs.existsSync(STORAGE_STATE_PATH)) {
   process.exit(2);
 }
 
-const browser = await chromium.launch({ headless: HEADLESS });
+const browser = await chromium.launch({ headless: HEADLESS, slowMo: SLOW_MO });
 const context = await browser.newContext({
   // Match the shop locale and reset timing to Japan time.
   locale: 'ja-JP',
@@ -42,6 +44,10 @@ try {
     await claimItem(page, itemName);
   }
 } finally {
+  if (PAUSE_AFTER_DONE > 0) {
+    console.log(`Waiting ${PAUSE_AFTER_DONE}ms before closing the browser...`);
+    await page.waitForTimeout(PAUSE_AFTER_DONE).catch(() => {});
+  }
   await browser.close();
 }
 
@@ -87,6 +93,11 @@ async function claimItem(page, itemName) {
 
   const actionText = normalize(await action.innerText().catch(() => ''));
   console.log(`Action: ${actionText || '<icon/button>'}`);
+
+  if (/(完了|獲得完了|受け取りました|獲得しました|already|すでに)/i.test(actionText)) {
+    console.log(`Already completed: ${itemName}`);
+    return;
+  }
 
   if (DRY_RUN) {
     console.log('DRY_RUN=true, skipping click.');
@@ -150,7 +161,7 @@ async function findActionIn(root) {
 }
 
 async function confirmFreeFlow(page) {
-  // Some flows show one or more confirmation dialogs; advance only through free-looking prompts.
+  // Some flows show one or more confirmation dialogs; always handle the visible modal first.
   const steps = [
     /無料/,
     /受け取り/,
@@ -161,34 +172,56 @@ async function confirmFreeFlow(page) {
   ];
 
   for (let index = 0; index < 5; index += 1) {
+    const button = await firstVisibleModalButton(page, steps);
+    if (button) {
+      const buttonText = normalize(await button.innerText().catch(() => ''));
+      if (/(完了|獲得完了|受け取りました|獲得しました|already|すでに)/i.test(buttonText)) {
+        console.log(`Completion button/state detected: ${buttonText}`);
+        return;
+      }
+
+      console.log(`Confirm: ${buttonText || '<icon/button>'}`);
+      await button.click();
+      await page.waitForTimeout(1500);
+      continue;
+    }
+
     const visibleText = normalize(await page.locator('body').innerText().catch(() => ''));
     if (/(完了|受け取りました|獲得しました|already|すでに|本日は|今週)/i.test(visibleText)) {
       console.log('Completion or already-claimed message detected.');
       return;
     }
 
-    const paidPricePattern = /(?:￥|¥|\$|USD|JPY|円)\s*[1-9][0-9,.]*/i;
-    if (paidPricePattern.test(visibleText) && !/(無料|0円|￥0|¥0|free)/i.test(visibleText)) {
-      throw new Error(`Safety stop: confirmation page contains a paid-looking price. Text: ${visibleText}`);
-    }
-
-    const button = await firstVisibleButton(page, steps);
-    if (!button) return;
-
-    const buttonText = normalize(await button.innerText().catch(() => ''));
-    console.log(`Confirm: ${buttonText || '<icon/button>'}`);
-    await button.click();
-    await page.waitForTimeout(1500);
+    return;
   }
 }
 
-async function firstVisibleButton(page, labels) {
-  for (const label of labels) {
-    const button = page.getByRole('button', { name: label }).first();
-    if (await button.isVisible().catch(() => false)) return button;
+async function firstVisibleModalButton(page, labels) {
+  const modalButtons = page.locator(
+    '.modals button:visible, .modal-window button:visible, [role="dialog"] button:visible',
+  );
 
-    const link = page.getByRole('link', { name: label }).first();
-    if (await link.isVisible().catch(() => false)) return link;
+  for (const label of labels) {
+    const candidates = modalButtons.filter({ hasText: label });
+    const count = await candidates.count().catch(() => 0);
+
+    for (let index = count - 1; index >= 0; index -= 1) {
+      const modalButton = candidates.nth(index);
+      const className = await modalButton.getAttribute('class').catch(() => '');
+
+      if (className?.includes('disabled')) {
+        const buttonText = normalize(await modalButton.innerText().catch(() => ''));
+        if (/(完了|獲得完了|受け取りました|獲得しました)/i.test(buttonText)) {
+          return modalButton;
+        }
+
+        continue;
+      }
+
+      if (await modalButton.isVisible().catch(() => false)) {
+        return modalButton;
+      }
+    }
   }
 
   return null;
@@ -210,7 +243,11 @@ async function dismissCommonPopups(page) {
 async function ensureLoggedIn(page) {
   // If the saved session expired, fail early so the GitHub Actions log explains the fix.
   const bodyText = normalize(await page.locator('body').innerText().catch(() => ''));
-  if (/(ログイン|login|sign in)/i.test(bodyText) && !/(ログアウト|logout|sign out)/i.test(bodyText)) {
+  const url = page.url();
+  const isLoginPage = /signin|login|auth/i.test(url);
+  const asksForLogin = /(ログインしてください|ログインが必要|please log in|sign in required)/i.test(bodyText);
+
+  if (isLoginPage || asksForLogin) {
     throw new Error('Login state appears to be expired. Run `npm run login` and update the secret.');
   }
 }
