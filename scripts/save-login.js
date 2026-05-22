@@ -49,8 +49,13 @@ async function waitForLogin(page) {
   while (Date.now() < deadline) {
     await page.waitForTimeout(2000);
 
+    const cookies = await page.context().cookies().catch(() => []);
+    if (cookies.some((cookie) => cookie.name === 'NMsololvShopToken')) {
+      return;
+    }
+
     const bodyText = await page.locator('body').innerText().catch(() => '');
-    if (/(ログアウト|logout|sign out)/i.test(bodyText) || !/(ログイン|login|sign in)/i.test(bodyText)) {
+    if (/(ログアウト|logout|sign out)/i.test(bodyText)) {
       return;
     }
   }

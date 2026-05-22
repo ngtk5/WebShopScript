@@ -177,6 +177,11 @@ async function confirmFreeFlow(page) {
   ];
 
   for (let index = 0; index < 5; index += 1) {
+    const modalText = await visibleModalText(page);
+    if (/(ログイン後にご利用いただけます|ログインしてください|ログインが必要|please log in|sign in required)/i.test(modalText)) {
+      throw new Error('Login state is not valid in this environment. Run `npm run login` locally and update the GitHub secret.');
+    }
+
     const button = await firstVisibleModalButton(page, steps);
     if (button) {
       const buttonText = normalize(await button.innerText().catch(() => ''));
@@ -202,34 +207,43 @@ async function confirmFreeFlow(page) {
 }
 
 async function firstVisibleModalButton(page, labels) {
-  const modalButtons = page.locator(
-    '.modals button:visible, .modal-window button:visible, [role="dialog"] button:visible',
-  );
+  const topModal = page.locator('.modal.show.last, .modals .modal.show, [role="dialog"]').last();
+  const buttonRoots = (await topModal.isVisible().catch(() => false))
+    ? [topModal, page]
+    : [page];
 
   for (const label of labels) {
-    const candidates = modalButtons.filter({ hasText: label });
-    const count = await candidates.count().catch(() => 0);
+    for (const root of buttonRoots) {
+      const candidates = root
+        .locator('button:visible, [role="button"]:visible')
+        .filter({ hasText: label });
+      const count = await candidates.count().catch(() => 0);
 
-    for (let index = count - 1; index >= 0; index -= 1) {
-      const modalButton = candidates.nth(index);
-      const className = await modalButton.getAttribute('class').catch(() => '');
+      for (let index = count - 1; index >= 0; index -= 1) {
+        const modalButton = candidates.nth(index);
+        const className = await modalButton.getAttribute('class').catch(() => '');
 
-      if (className?.includes('disabled')) {
-        const buttonText = normalize(await modalButton.innerText().catch(() => ''));
-        if (/(完了|獲得完了|受け取りました|獲得しました)/i.test(buttonText)) {
-          return modalButton;
+        if (className?.includes('disabled')) {
+          const buttonText = normalize(await modalButton.innerText().catch(() => ''));
+          if (/(完了|獲得完了|受け取りました|獲得しました)/i.test(buttonText)) {
+            return modalButton;
+          }
+
+          continue;
         }
 
-        continue;
-      }
-
-      if (await modalButton.isVisible().catch(() => false)) {
-        return modalButton;
+        if (await modalButton.isVisible().catch(() => false)) {
+          return modalButton;
+        }
       }
     }
   }
 
   return null;
+}
+
+async function visibleModalText(page) {
+  return normalize(await page.locator('.modal.show.last, .modals .modal.show, [role="dialog"]').last().innerText().catch(() => ''));
 }
 
 async function dismissCommonPopups(page) {
