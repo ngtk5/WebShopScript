@@ -276,6 +276,7 @@ async function closeLoginRequiredModal(page) {
 
 async function openLoginPage(page) {
   if (/signin|login|auth/i.test(page.url())) return;
+  if (await openEmailLoginFromModal(page)) return;
 
   const loginControl = page
     .locator('button:visible, a:visible, [role="button"]:visible')
@@ -289,6 +290,7 @@ async function openLoginPage(page) {
   await loginControl.click();
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   await page.waitForTimeout(2000);
+  await openEmailLoginFromModal(page);
 }
 
 async function fillLoginForm(page) {
@@ -319,6 +321,27 @@ async function fillLoginForm(page) {
   } else {
     await passwordInput.press('Enter');
   }
+}
+
+async function openEmailLoginFromModal(page) {
+  const topModal = page.locator('.modal.show.last, .modals .modal.show, [role="dialog"]').last();
+  if (!(await topModal.isVisible().catch(() => false))) return false;
+
+  const emailSignIn = topModal
+    .locator('button:visible, a:visible, [role="button"]:visible')
+    .filter({ hasText: /e-?mail|メール|email/i })
+    .last();
+
+  if (!(await emailSignIn.isVisible().catch(() => false))) return false;
+
+  const modalText = normalize(await topModal.innerText().catch(() => ''));
+  if (!/(サインイン|sign in|ログイン|login)/i.test(modalText)) return false;
+
+  console.log('Opening e-mail sign-in form...');
+  await emailSignIn.click();
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForTimeout(2000);
+  return true;
 }
 
 async function waitForLoggedIn(page) {
