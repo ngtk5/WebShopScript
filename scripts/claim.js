@@ -43,6 +43,11 @@ try {
     console.log(`\n== Claiming: ${itemName} ==`);
     await claimItem(page, itemName);
   }
+} catch (error) {
+  console.error('\nClaim failed.');
+  console.error(error?.stack || error);
+  await logDebugState(page);
+  process.exitCode = 1;
 } finally {
   if (PAUSE_AFTER_DONE > 0) {
     console.log(`Waiting ${PAUSE_AFTER_DONE}ms before closing the browser...`);
@@ -252,9 +257,38 @@ async function ensureLoggedIn(page) {
   }
 }
 
+async function logDebugState(page) {
+  console.error('\nDebug state:');
+  console.error(`URL: ${page.url()}`);
+  console.error(`Title: ${await page.title().catch(() => '<unavailable>')}`);
+
+  const modalText = normalize(
+    await page.locator('.modals, .modal-window, [role="dialog"]').last().innerText().catch(() => ''),
+  );
+  if (modalText) {
+    console.error(`Visible modal text: ${truncate(modalText, 1200)}`);
+  }
+
+  const buttonTexts = await page
+    .locator('button:visible, [role="button"]:visible')
+    .evaluateAll((buttons) => buttons.map((button) => button.innerText || button.textContent || '').filter(Boolean))
+    .catch(() => []);
+
+  if (buttonTexts.length > 0) {
+    console.error('Visible buttons:');
+    for (const text of buttonTexts.slice(0, 20)) {
+      console.error(`- ${truncate(normalize(text), 200)}`);
+    }
+  }
+}
+
 function containsAny(text, needles) {
   const lower = text.toLowerCase();
   return needles.some((needle) => lower.includes(String(needle).toLowerCase()));
+}
+
+function truncate(text, maxLength) {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
 function normalize(text) {
