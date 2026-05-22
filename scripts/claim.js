@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
+import path from 'node:path';
 import process from 'node:process';
 
 const SHOP_URL = process.env.SHOP_URL ?? 'https://slvshop.netmarble.com/ja/item';
@@ -8,6 +9,8 @@ const HEADLESS = process.env.HEADLESS !== 'false';
 const DRY_RUN = process.env.DRY_RUN === 'true';
 const SLOW_MO = Number(process.env.SLOW_MO ?? 0);
 const PAUSE_AFTER_DONE = Number(process.env.PAUSE_AFTER_DONE ?? 0);
+const NETMARBLE_EMAIL = process.env.NETMARBLE_EMAIL ?? '';
+const NETMARBLE_PASSWORD = process.env.NETMARBLE_PASSWORD ?? '';
 
 // Reward names can be passed by npm scripts, CLI args, or ITEM_NAMES for manual runs.
 const items = parseItems(process.argv.slice(2));
@@ -17,10 +20,13 @@ if (items.length === 0) {
   process.exit(2);
 }
 
-// Reuse the login session saved locally by scripts/save-login.js or restored in GitHub Actions.
-if (!fs.existsSync(STORAGE_STATE_PATH)) {
+const hasSavedLoginState = fs.existsSync(STORAGE_STATE_PATH);
+const hasLoginCredentials = Boolean(NETMARBLE_EMAIL && NETMARBLE_PASSWORD);
+
+// Prefer a saved session, but allow fresh login from GitHub Secrets when the session is missing or expired.
+if (!hasSavedLoginState && !hasLoginCredentials) {
   console.error(`Missing login state: ${STORAGE_STATE_PATH}`);
-  console.error('Run `npm run login` locally, then add the base64 state to GitHub Secrets.');
+  console.error('Run `npm run login`, or set NETMARBLE_EMAIL and NETMARBLE_PASSWORD.');
   process.exit(2);
 }
 
@@ -29,7 +35,7 @@ const context = await browser.newContext({
   // Match the shop locale and reset timing to Japan time.
   locale: 'ja-JP',
   timezoneId: 'Asia/Tokyo',
-  storageState: STORAGE_STATE_PATH,
+  ...(hasSavedLoginState ? { storageState: STORAGE_STATE_PATH } : {}),
 });
 const page = await context.newPage();
 
@@ -75,46 +81,60 @@ function parseItems(args) {
 }
 
 async function claimItem(page, itemName) {
-  await page.goto(SHOP_URL, { waitUntil: 'networkidle' });
-  await dismissCommonPopups(page);
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    await page.goto(SHOP_URL, { waitUntil: 'networkidle' });
+    await dismissCommonPopups(page);
 
-  // Locate the visible item name first, then climb to the nearest clickable product area.
-  const itemText = page.getByText(itemName, { exact: false }).first();
-  await itemText.waitFor({ state: 'visible' });
-  await itemText.scrollIntoViewIfNeeded();
+    // Locate the visible item name first, then climb to the nearest clickable product area.
+    const itemText = page.getByText(itemName, { exact: false }).first();
+    await itemText.waitFor({ state: 'visible' });
+    await itemText.scrollIntoViewIfNeeded();
 
-  const card = itemText.locator(
-    'xpath=ancestor::*[self::li or self::article or self::section or self::div][.//button or @role="button" or .//a][1]',
-  );
+    const card = itemText.locator(
+      'xpath=ancestor::*[self::li or self::article or self::section or self::div][.//button or @role="button" or .//a][1]',
+    );
 
-  const cardText = normalize(await card.innerText().catch(() => ''));
-  // Stop before clicking if the card does not clearly look like a free claim.
-  assertFreeClaimSurface(itemName, cardText);
+    const cardText = normalize(await card.innerText().catch(() => ''));
+    // Stop before clicking if the card does not clearly look like a free claim.
+    assertFreeClaimSurface(itemName, cardText);
 
-  const action = await findActionIn(card);
-  if (!action) {
-    throw new Error(`Could not find a free claim button for "${itemName}". Card text: ${cardText}`);
-  }
+    const action = await findActionIn(card);
+    if (!action) {
+      throw new Error(`Could not find a free claim button for "${itemName}". Card text: ${cardText}`);
+    }
 
-  const actionText = normalize(await action.innerText().catch(() => ''));
-  console.log(`Action: ${actionText || '<icon/button>'}`);
+    const actionText = normalize(await action.innerText().catch(() => ''));
+    console.log(`Action: ${actionText || '<icon/button>'}`);
 
-  if (/(完了|獲得完了|受け取りました|獲得しました|already|すでに)/i.test(actionText)) {
-    console.log(`Already completed: ${itemName}`);
+    if (/(完了|獲得完了|受け取りました|獲得しました|already|すでに)/i.test(actionText)) {
+      console.log(`Already completed: ${itemName}`);
+      return;
+    }
+
+    if (DRY_RUN) {
+      console.log('DRY_RUN=true, skipping click.');
+      return;
+    }
+
+    await action.click();
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    await dismissCommonPopups(page);
+
+    if (await pageShowsLoginRequired(page)) {
+      if (attempt === 2) {
+        throw new Error('Login is still required after automatic login.');
+      }
+
+      console.log('Login required. Trying automatic login...');
+      await loginWithCredentials(page);
+      continue;
+    }
+
+    await confirmFreeFlow(page);
+    await dismissCommonPopups(page);
+    console.log(`Done: ${itemName}`);
     return;
   }
-
-  if (DRY_RUN) {
-    console.log('DRY_RUN=true, skipping click.');
-    return;
-  }
-
-  await action.click();
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await dismissCommonPopups(page);
-  await confirmFreeFlow(page);
-  await dismissCommonPopups(page);
-  console.log(`Done: ${itemName}`);
 }
 
 function assertFreeClaimSurface(itemName, text) {
@@ -206,6 +226,104 @@ async function confirmFreeFlow(page) {
   }
 }
 
+async function pageShowsLoginRequired(page) {
+  const modalText = await visibleModalText(page);
+  const bodyText = normalize(await page.locator('body').innerText().catch(() => ''));
+  return /(ログイン後にご利用いただけます|ログインしてください|ログインが必要|please log in|sign in required)/i.test(
+    `${modalText} ${bodyText}`,
+  );
+}
+
+async function loginWithCredentials(page) {
+  if (!hasLoginCredentials) {
+    throw new Error('Login is required, but NETMARBLE_EMAIL and NETMARBLE_PASSWORD are not set.');
+  }
+
+  await closeLoginRequiredModal(page);
+  await openLoginPage(page);
+  await fillLoginForm(page);
+  await waitForLoggedIn(page);
+  fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
+  await page.context().storageState({ path: STORAGE_STATE_PATH }).catch(() => {});
+  console.log('Automatic login completed.');
+}
+
+async function closeLoginRequiredModal(page) {
+  const topModal = page.locator('.modal.show.last, .modals .modal.show, [role="dialog"]').last();
+  if (!(await topModal.isVisible().catch(() => false))) return;
+
+  const closeButton = topModal
+    .locator('button:visible, [role="button"]:visible')
+    .filter({ hasText: /確認|OK|閉じる|close/i })
+    .last();
+  if (await closeButton.isVisible().catch(() => false)) {
+    await closeButton.click().catch(() => {});
+    await page.waitForTimeout(1000);
+  }
+}
+
+async function openLoginPage(page) {
+  if (/signin|login|auth/i.test(page.url())) return;
+
+  const loginControl = page
+    .locator('button:visible, a:visible, [role="button"]:visible')
+    .filter({ hasText: /ログイン|login|sign in/i })
+    .first();
+
+  if (!(await loginControl.isVisible().catch(() => false))) {
+    throw new Error('Could not find the Netmarble login button.');
+  }
+
+  await loginControl.click();
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForTimeout(2000);
+}
+
+async function fillLoginForm(page) {
+  const emailInput = page
+    .locator(
+      'input[type="email"], input[name*="email" i], input[id*="email" i], input[placeholder*="メール"], input[placeholder*="mail" i], input[placeholder*="email" i]',
+    )
+    .first();
+  const passwordInput = page
+    .locator(
+      'input[type="password"], input[name*="password" i], input[id*="password" i], input[placeholder*="パスワード"], input[placeholder*="password" i]',
+    )
+    .first();
+
+  await emailInput.waitFor({ state: 'visible', timeout: 30_000 });
+  await passwordInput.waitFor({ state: 'visible', timeout: 30_000 });
+
+  await emailInput.fill(NETMARBLE_EMAIL);
+  await passwordInput.fill(NETMARBLE_PASSWORD);
+
+  const submitButton = page
+    .locator('button:visible, [role="button"]:visible, input[type="submit"]:visible')
+    .filter({ hasText: /ログイン|login|sign in|確認|次へ|続ける/i })
+    .last();
+
+  if (await submitButton.isVisible().catch(() => false)) {
+    await submitButton.click();
+  } else {
+    await passwordInput.press('Enter');
+  }
+}
+
+async function waitForLoggedIn(page) {
+  const deadline = Date.now() + 60_000;
+
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(2000);
+
+    const cookies = await page.context().cookies().catch(() => []);
+    if (cookies.some((cookie) => cookie.name === 'NMsololvShopToken')) return;
+
+    if (page.url().startsWith(SHOP_URL) && !(await pageShowsLoginRequired(page))) return;
+  }
+
+  throw new Error('Automatic login did not complete. The site may require CAPTCHA, email verification, or another manual step.');
+}
+
 async function firstVisibleModalButton(page, labels) {
   const topModal = page.locator('.modal.show.last, .modals .modal.show, [role="dialog"]').last();
   const buttonRoots = (await topModal.isVisible().catch(() => false))
@@ -267,7 +385,8 @@ async function ensureLoggedIn(page) {
   const asksForLogin = /(ログインしてください|ログインが必要|please log in|sign in required)/i.test(bodyText);
 
   if (isLoginPage || asksForLogin) {
-    throw new Error('Login state appears to be expired. Run `npm run login` and update the secret.');
+    console.log('Login state appears to be expired. Trying automatic login...');
+    await loginWithCredentials(page);
   }
 }
 

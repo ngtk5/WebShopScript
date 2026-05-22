@@ -27,6 +27,8 @@ jobs:
     env:
       # Opt in early so GitHub does not warn about Node.js 20-based actions.
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      NETMARBLE_EMAIL: ${{ secrets.NETMARBLE_EMAIL }}
+      NETMARBLE_PASSWORD: ${{ secrets.NETMARBLE_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -48,8 +50,8 @@ jobs:
           PLAYWRIGHT_STORAGE_STATE_BASE64: ${{ secrets.PLAYWRIGHT_STORAGE_STATE_BASE64 }}
         run: |
           if [ -z "$PLAYWRIGHT_STORAGE_STATE_BASE64" ]; then
-            echo "::error::Missing GitHub secret PLAYWRIGHT_STORAGE_STATE_BASE64."
-            exit 1
+            echo "No saved login state secret found. The script will try NETMARBLE_EMAIL / NETMARBLE_PASSWORD."
+            exit 0
           fi
           mkdir -p storage
           printf '%s' "$PLAYWRIGHT_STORAGE_STATE_BASE64" | base64 -d > storage/state.json
