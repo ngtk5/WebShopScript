@@ -130,7 +130,17 @@ async function claimItem(page, itemName) {
       continue;
     }
 
-    await confirmFreeFlow(page);
+    const confirmResult = await confirmFreeFlow(page);
+    if (confirmResult === 'login-required') {
+      if (attempt === 2) {
+        throw new Error('Login is still required after automatic login.');
+      }
+
+      console.log('Login required during confirmation. Trying automatic login...');
+      await loginWithCredentials(page);
+      continue;
+    }
+
     await dismissCommonPopups(page);
     console.log(`Done: ${itemName}`);
     return;
@@ -199,7 +209,7 @@ async function confirmFreeFlow(page) {
   for (let index = 0; index < 5; index += 1) {
     const modalText = await visibleModalText(page);
     if (/(ログイン後にご利用いただけます|ログインしてください|ログインが必要|please log in|sign in required)/i.test(modalText)) {
-      throw new Error('Login state is not valid in this environment. Run `npm run login` locally and update the GitHub secret.');
+      return 'login-required';
     }
 
     const button = await firstVisibleModalButton(page, steps);
@@ -207,7 +217,7 @@ async function confirmFreeFlow(page) {
       const buttonText = normalize(await button.innerText().catch(() => ''));
       if (/(完了|獲得完了|受け取りました|獲得しました|already|すでに)/i.test(buttonText)) {
         console.log(`Completion button/state detected: ${buttonText}`);
-        return;
+        return 'done';
       }
 
       console.log(`Confirm: ${buttonText || '<icon/button>'}`);
@@ -219,11 +229,13 @@ async function confirmFreeFlow(page) {
     const visibleText = normalize(await page.locator('body').innerText().catch(() => ''));
     if (/(完了|受け取りました|獲得しました|already|すでに|本日は|今週)/i.test(visibleText)) {
       console.log('Completion or already-claimed message detected.');
-      return;
+      return 'done';
     }
 
-    return;
+    return 'done';
   }
+
+  return 'done';
 }
 
 async function pageShowsLoginRequired(page) {
