@@ -308,6 +308,7 @@ async function fillLoginForm(page) {
   await emailInput.waitFor({ state: 'visible', timeout: 30_000 });
   await passwordInput.waitFor({ state: 'visible', timeout: 30_000 });
 
+  console.log('Filling Netmarble e-mail login form...');
   await emailInput.fill(NETMARBLE_EMAIL);
   await passwordInput.fill(NETMARBLE_PASSWORD);
 
@@ -317,10 +318,18 @@ async function fillLoginForm(page) {
     .last();
 
   if (await submitButton.isVisible().catch(() => false)) {
-    await submitButton.click();
+    await Promise.all([
+      page.waitForLoadState('domcontentloaded').catch(() => {}),
+      submitButton.click(),
+    ]);
   } else {
-    await passwordInput.press('Enter');
+    await Promise.all([
+      page.waitForLoadState('domcontentloaded').catch(() => {}),
+      passwordInput.press('Enter'),
+    ]);
   }
+
+  await page.waitForTimeout(3000);
 }
 
 async function openEmailLoginFromModal(page) {
@@ -345,7 +354,7 @@ async function openEmailLoginFromModal(page) {
 }
 
 async function waitForLoggedIn(page) {
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + 180_000;
 
   while (Date.now() < deadline) {
     await page.waitForTimeout(2000);
@@ -354,6 +363,11 @@ async function waitForLoggedIn(page) {
     if (cookies.some((cookie) => cookie.name === 'NMsololvShopToken')) return;
 
     if (page.url().startsWith(SHOP_URL) && !(await pageShowsLoginRequired(page))) return;
+
+    const bodyText = normalize(await page.locator('body').innerText().catch(() => ''));
+    if (/(認証|確認コード|captcha|CAPTCHA|メールを確認|verification|verify|incorrect|invalid|間違|エラー)/i.test(bodyText)) {
+      throw new Error(`Automatic login needs attention: ${truncate(bodyText, 1000)}`);
+    }
   }
 
   throw new Error('Automatic login did not complete. The site may require CAPTCHA, email verification, or another manual step.');
@@ -447,6 +461,11 @@ async function logDebugState(page) {
     for (const text of buttonTexts.slice(0, 20)) {
       console.error(`- ${truncate(normalize(text), 200)}`);
     }
+  }
+
+  const bodyText = normalize(await page.locator('body').innerText().catch(() => ''));
+  if (bodyText) {
+    console.error(`Visible page text: ${truncate(bodyText, 1600)}`);
   }
 }
 
