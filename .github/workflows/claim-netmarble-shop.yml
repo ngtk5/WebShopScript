@@ -24,6 +24,9 @@ jobs:
   claim:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # Opt in early so GitHub does not warn about Node.js 20-based actions.
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
@@ -32,10 +35,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
@@ -44,13 +47,18 @@ jobs:
         env:
           PLAYWRIGHT_STORAGE_STATE_BASE64: ${{ secrets.PLAYWRIGHT_STORAGE_STATE_BASE64 }}
         run: |
+          if [ -z "$PLAYWRIGHT_STORAGE_STATE_BASE64" ]; then
+            echo "::error::Missing GitHub secret PLAYWRIGHT_STORAGE_STATE_BASE64."
+            exit 1
+          fi
           mkdir -p storage
-          echo "$PLAYWRIGHT_STORAGE_STATE_BASE64" | base64 -d > storage/state.json
+          printf '%s' "$PLAYWRIGHT_STORAGE_STATE_BASE64" | base64 -d > storage/state.json
+          node -e "JSON.parse(require('fs').readFileSync('storage/state.json', 'utf8')); console.log('Login state restored.')"
 
       - name: Claim daily reward
-        if: github.event_name == 'workflow_dispatch' && (inputs.target == 'daily' || inputs.target == 'both') || github.event_name == 'schedule'
+        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.target == 'daily' || inputs.target == 'both')) || (github.event_name == 'schedule' && github.event.schedule == '5 0 * * *') }}
         run: npm run claim:daily
 
       - name: Claim weekly reward
-        if: github.event_name == 'workflow_dispatch' && (inputs.target == 'weekly' || inputs.target == 'both') || github.event_name == 'schedule' && github.event.schedule == '10 0 * * 4'
+        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.target == 'weekly' || inputs.target == 'both')) || (github.event_name == 'schedule' && github.event.schedule == '10 0 * * 4') }}
         run: npm run claim:weekly
