@@ -13,12 +13,14 @@ on:
           - weekly
           - both
   schedule:
-    # Daily claim: 00:05 UTC = 09:05 JST.
+    # Daily claim: 00:37 UTC = 09:37 JST.
+    # The minute is intentionally away from the top of the hour to reduce GitHub Actions schedule delays.
     # Runs "毎日の魔法石ガチャ" every day.
-    - cron: '5 0 * * *'
-    # Weekly claim: Thursday 00:10 UTC = Thursday 09:10 JST.
+    - cron: '37 0 * * *'
+    # Weekly claim: Thursday 00:42 UTC = Thursday 09:42 JST.
+    # The minute is intentionally away from the top of the hour to reduce GitHub Actions schedule delays.
     # Runs "ラグジュアリーガチャ" once a week.
-    - cron: '10 0 * * 4'
+    - cron: '42 0 * * 4'
 
 jobs:
   claim:
@@ -58,9 +60,9 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('storage/state.json', 'utf8')); console.log('Login state restored.')"
 
       - name: Claim daily reward
-        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.target == 'daily' || inputs.target == 'both')) || (github.event_name == 'schedule' && github.event.schedule == '5 0 * * *') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.target == 'daily' || inputs.target == 'both')) || (github.event_name == 'schedule' && github.event.schedule == '37 0 * * *') }}
         run: npm run claim:daily
 
       - name: Claim weekly reward
-        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.target == 'weekly' || inputs.target == 'both')) || (github.event_name == 'schedule' && github.event.schedule == '10 0 * * 4') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && (inputs.target == 'weekly' || inputs.target == 'both')) || (github.event_name == 'schedule' && github.event.schedule == '42 0 * * 4') }}
         run: npm run claim:weekly
