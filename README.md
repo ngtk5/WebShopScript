@@ -56,15 +56,48 @@ npm run login
 
 最後に表示される base64 文字列を `PLAYWRIGHT_STORAGE_STATE_BASE64` に登録できます。
 
+## 外部 cron 実行
+
+GitHub Actions の `schedule` は使わず、外部 cron サービスから `workflow_dispatch` を叩きます。
+cron-job.org などで、以下の GitHub API に `POST` します。
+
+URL:
+
+```text
+https://api.github.com/repos/ngtk5/WebShopScript/actions/workflows/claim-netmarble-shop.yml/dispatches
+```
+
+Headers:
+
+```text
+Accept: application/vnd.github.v3+json
+Authorization: Bearer <GitHub Fine-grained PAT>
+Content-Type: application/json
+```
+
+Daily request body:
+
+```json
+{"ref":"main","inputs":{"target":"daily"}}
+```
+
+Weekly request body:
+
+```json
+{"ref":"main","inputs":{"target":"weekly"}}
+```
+
+Fine-grained PAT は、このリポジトリだけに絞って作成します。権限は `Actions: Read and write` が必要です。
+
 ## 実行時刻
 
-GitHub Actions の cron は UTC です。この設定では次の日本時間で実行されます。
+外部 cron サービス側で次の日本時間に設定します。
 
 - 毎日 09:37 JST: `毎日の魔法石ガチャ`
 - 毎週 木曜 09:42 JST: `ラグジュアリーガチャ`
 
-GitHub Actions の schedule は遅延することがあるため、混みやすい毎時直後を避けた時刻にしています。
-時刻を変える場合は `.github/workflows/claim-netmarble-shop.yml` の cron を編集してください。
+GitHub Actions の schedule 遅延を避けるため、GitHub 側の cron は使いません。
+時刻を変える場合は、外部 cron サービス側の設定を変更してください。
 
 ## 手動実行
 
