@@ -309,8 +309,8 @@ async function fillLoginForm(page) {
   await passwordInput.waitFor({ state: 'visible', timeout: 30_000 });
 
   console.log('Filling Netmarble e-mail login form...');
-  await emailInput.fill(NETMARBLE_EMAIL);
-  await passwordInput.fill(NETMARBLE_PASSWORD);
+  await humanFill(emailInput, NETMARBLE_EMAIL);
+  await humanFill(passwordInput, NETMARBLE_PASSWORD);
 
   const submitButton = page
     .locator('button:visible, [role="button"]:visible, input[type="submit"]:visible')
@@ -318,18 +318,33 @@ async function fillLoginForm(page) {
     .last();
 
   if (await submitButton.isVisible().catch(() => false)) {
-    await Promise.all([
-      page.waitForLoadState('domcontentloaded').catch(() => {}),
-      submitButton.click(),
-    ]);
+    console.log('Submitting Netmarble login form...');
+    await submitButton.click({ force: true });
   } else {
-    await Promise.all([
-      page.waitForLoadState('domcontentloaded').catch(() => {}),
-      passwordInput.press('Enter'),
-    ]);
+    console.log('Submitting Netmarble login form with Enter...');
+    await passwordInput.press('Enter');
   }
 
-  await page.waitForTimeout(3000);
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForTimeout(5000);
+
+  if (await passwordInput.isVisible().catch(() => false)) {
+    console.log('Login form still visible after click. Retrying with Enter...');
+    await passwordInput.press('Enter');
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    await page.waitForTimeout(5000);
+  }
+}
+
+async function humanFill(input, value) {
+  await input.click();
+  await input.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await input.press('Backspace');
+  await input.type(value, { delay: 50 });
+  await input.evaluate((element) => {
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  });
 }
 
 async function openEmailLoginFromModal(page) {
