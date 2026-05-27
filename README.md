@@ -64,7 +64,7 @@ cron-job.org などで、以下の GitHub API に `POST` します。
 URL:
 
 ```text
-https://api.github.com/repos/novexis13/WebShopScript/actions/workflows/claim-netmarble-shop.yml/dispatches
+https://api.github.com/repos/<GitHub Username>/WebShopScript/actions/workflows/claim-netmarble-shop.yml/dispatches
 ```
 
 Headers:
