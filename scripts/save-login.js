@@ -8,10 +8,10 @@ const SHOP_URL = process.env.SHOP_URL ?? 'https://slvshop.netmarble.com/ja/item'
 const STORAGE_STATE_PATH = process.env.STORAGE_STATE_PATH ?? 'storage/state.json';
 const AUTO_SAVE = process.env.AUTO_SAVE === 'true';
 
-// This script must be visible because the user completes Netmarble login manually.
+// Netmarble へのログインは手動で行うため、ブラウザを表示して起動します。
 const browser = await chromium.launch({ headless: false });
 const context = await browser.newContext({
-  // Save a session that behaves like the scheduled Japan-time GitHub Actions run.
+  // GitHub Actions の日本時間実行と近い条件でセッションを保存します。
   locale: 'ja-JP',
   timezoneId: 'Asia/Tokyo',
 });
@@ -33,7 +33,7 @@ if (AUTO_SAVE) {
 }
 rl.close();
 
-// Persist cookies/local storage, then print a base64 version suitable for GitHub Secrets.
+// Cookie と localStorage を保存し、GitHub Secrets に入れやすい base64 形式で表示します。
 fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
 await context.storageState({ path: STORAGE_STATE_PATH });
 await browser.close();

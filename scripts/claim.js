@@ -12,7 +12,7 @@ const PAUSE_AFTER_DONE = Number(process.env.PAUSE_AFTER_DONE ?? 0);
 const NETMARBLE_EMAIL = process.env.NETMARBLE_EMAIL ?? '';
 const NETMARBLE_PASSWORD = process.env.NETMARBLE_PASSWORD ?? '';
 
-// Reward names can be passed by npm scripts, CLI args, or ITEM_NAMES for manual runs.
+// 受け取り対象名は npm scripts、CLI 引数、ITEM_NAMES のいずれからでも指定できます。
 const items = parseItems(process.argv.slice(2));
 
 if (items.length === 0) {
@@ -23,7 +23,7 @@ if (items.length === 0) {
 const hasSavedLoginState = fs.existsSync(STORAGE_STATE_PATH);
 const hasLoginCredentials = Boolean(NETMARBLE_EMAIL && NETMARBLE_PASSWORD);
 
-// Prefer a saved session, but allow fresh login from GitHub Secrets when the session is missing or expired.
+// 保存済みセッションを優先し、なければ GitHub Secrets の認証情報でログインします。
 if (!hasSavedLoginState && !hasLoginCredentials) {
   console.error(`Missing login state: ${STORAGE_STATE_PATH}`);
   console.error('Run `npm run login`, or set NETMARBLE_EMAIL and NETMARBLE_PASSWORD.');
@@ -32,7 +32,7 @@ if (!hasSavedLoginState && !hasLoginCredentials) {
 
 const browser = await chromium.launch({ headless: HEADLESS, slowMo: SLOW_MO });
 const context = await browser.newContext({
-  // Match the shop locale and reset timing to Japan time.
+  // ショップ表示とリセット時間に合わせて、日本向けの環境で開きます。
   locale: 'ja-JP',
   timezoneId: 'Asia/Tokyo',
   ...(hasSavedLoginState ? { storageState: STORAGE_STATE_PATH } : {}),
@@ -63,7 +63,7 @@ try {
 }
 
 function parseItems(args) {
-  // Support multiple --item flags so one run can claim daily and weekly rewards.
+  // --item を複数指定できるようにして、daily と weekly の同時実行にも対応します。
   const parsed = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -85,7 +85,7 @@ async function claimItem(page, itemName) {
     await page.goto(SHOP_URL, { waitUntil: 'networkidle' });
     await dismissCommonPopups(page);
 
-    // Locate the visible item name first, then climb to the nearest clickable product area.
+    // まず商品名を見つけ、その周辺にあるクリック可能な商品カードを探します。
     const itemText = page.getByText(itemName, { exact: false }).first();
     await itemText.waitFor({ state: 'visible' });
     await itemText.scrollIntoViewIfNeeded();
@@ -95,7 +95,7 @@ async function claimItem(page, itemName) {
     );
 
     const cardText = normalize(await card.innerText().catch(() => ''));
-    // Stop before clicking if the card does not clearly look like a free claim.
+    // 有料商品を誤クリックしないよう、無料受け取りに見える場合だけ先へ進みます。
     assertFreeClaimSurface(itemName, cardText);
 
     const action = await findActionIn(card);
@@ -148,7 +148,7 @@ async function claimItem(page, itemName) {
 }
 
 function assertFreeClaimSurface(itemName, text) {
-  // These signals are intentionally conservative to avoid clicking a paid product by mistake.
+  // 有料商品を避けるため、無料または受け取り系の文言を保守的に確認します。
   const freeSignals = [
     '無料',
     '0円',
@@ -172,7 +172,7 @@ function assertFreeClaimSurface(itemName, text) {
 }
 
 async function findActionIn(root) {
-  // Prefer accessible button/link names instead of brittle CSS classes from the shop UI.
+  // 壊れやすい CSS クラスではなく、ボタンやリンクの表示名を優先して探します。
   const actionLabels = [
     /受け取り/,
     /獲得/,
@@ -196,7 +196,7 @@ async function findActionIn(root) {
 }
 
 async function confirmFreeFlow(page) {
-  // Some flows show one or more confirmation dialogs; always handle the visible modal first.
+  // 確認ダイアログが複数出る場合があるため、最前面のモーダルを優先して処理します。
   const steps = [
     /無料/,
     /受け取り/,
@@ -429,7 +429,7 @@ async function visibleModalText(page) {
 }
 
 async function dismissCommonPopups(page) {
-  // Close common consent/notice dialogs that can block the item card or confirmation button.
+  // 商品カードや確認ボタンを隠す同意・通知ダイアログを閉じます。
   const labels = [/同意/, /許可/, /確認/, /^OK$/i, /閉じる/, /close/i, /accept/i];
 
   for (const label of labels) {
@@ -442,7 +442,7 @@ async function dismissCommonPopups(page) {
 }
 
 async function ensureLoggedIn(page) {
-  // If the saved session expired, fail early so the GitHub Actions log explains the fix.
+  // 保存済みセッションが切れている場合は、認証情報で自動ログインします。
   const bodyText = normalize(await page.locator('body').innerText().catch(() => ''));
   const url = page.url();
   const isLoginPage = /signin|login|auth/i.test(url);

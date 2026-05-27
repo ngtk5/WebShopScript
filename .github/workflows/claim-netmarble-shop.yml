@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # Opt in early so GitHub does not warn about Node.js 20-based actions.
+      # GitHub Actions 側の Node.js 20 警告を避けるため、Node.js 24 実行を明示します。
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NETMARBLE_EMAIL: ${{ secrets.NETMARBLE_EMAIL }}
       NETMARBLE_PASSWORD: ${{ secrets.NETMARBLE_PASSWORD }}
