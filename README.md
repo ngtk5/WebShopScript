@@ -33,29 +33,6 @@ PLAYWRIGHT_STORAGE_STATE_BASE64
 
 `PLAYWRIGHT_STORAGE_STATE_BASE64` はログイン済みセッションです。なくても、メールアドレスとパスワードがあれば自動ログインを試みます。
 
-## GitHub ユーザー名変更時
-
-GitHub のユーザー名を変更した場合、次を確認してください。
-
-- 外部 cron の URL を新しいユーザー名に変更する
-- Fine-grained PAT の Repository access が新しいリポジトリを指しているか確認する
-- ローカルの `origin` URL を新しいリポジトリ URL に変更する
-
-現在の外部 cron URL は、必ず新しいユーザー名に置き換えてください。
-
-```text
-https://api.github.com/repos/<新しいGitHubユーザー名>/WebShopScript/actions/workflows/claim-netmarble-shop.yml/dispatches
-```
-
-ローカルの `origin` を変更する場合:
-
-```bash
-git remote set-url origin https://github.com/<新しいGitHubユーザー名>/WebShopScript.git
-git remote -v
-```
-
-GitHub のリダイレクトで一時的に古い URL が動くことはありますが、外部 cron や PAT の設定は新しいユーザー名にそろえる方が安全です。
-
 ## 初回セットアップ
 
 依存関係を入れます。
@@ -87,7 +64,7 @@ cron-job.org などで、以下の GitHub API に `POST` します。
 URL:
 
 ```text
-https://api.github.com/repos/<新しいGitHubユーザー名>/WebShopScript/actions/workflows/claim-netmarble-shop.yml/dispatches
+https://api.github.com/repos/novexis13/WebShopScript/actions/workflows/claim-netmarble-shop.yml/dispatches
 ```
 
 Headers:
